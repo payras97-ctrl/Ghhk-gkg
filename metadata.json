@@ -1,0 +1,8 @@
+{
+  "name": "Remix: J.A.R.V.I.S. Assistant",
+  "description": "A futuristic voice-activated AI assistant using the Gemini Live API.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
