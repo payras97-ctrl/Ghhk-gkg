@@ -169,6 +169,33 @@ const getWeatherDeclaration: FunctionDeclaration = {
   },
 };
 
+const scheduleEventDeclaration: FunctionDeclaration = {
+  name: 'scheduleEvent',
+  description: 'Schedule a new event on the calendar.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING, description: 'The title or name of the event' },
+      date: { type: Type.STRING, description: 'The date of the event (e.g., YYYY-MM-DD)' },
+      time: { type: Type.STRING, description: 'The time of the event (e.g., HH:MM AM/PM)' },
+    },
+    required: ['title', 'date', 'time'],
+  },
+};
+
+const getScheduleDeclaration: FunctionDeclaration = {
+  name: 'getSchedule',
+  description: 'View the user\'s schedule or list of events.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+       date: { type: Type.STRING, description: 'Optional date to filter events (YYYY-MM-DD).' }
+    },
+  },
+};
+
+let globalEvents: { id: string, title: string, date: string, time: string }[] = [];
+
 // --- Main App Component ---
 interface Message {
   id: string;
@@ -182,6 +209,8 @@ export default function App() {
   const [inputText, setInputText] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
+  const [currentDate, setCurrentDate] = useState(new Date().toLocaleDateString());
+  const [events, setEvents] = useState(globalEvents);
   
   const sessionRef = useRef<any>(null);
   const audioStreamerRef = useRef<AudioStreamer | null>(null);
@@ -190,8 +219,15 @@ export default function App() {
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString());
+      setCurrentDate(new Date().toLocaleDateString());
     }, 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const handleUpdate = () => setEvents([...globalEvents]);
+    window.addEventListener('calendarUpdate', handleUpdate);
+    return () => window.removeEventListener('calendarUpdate', handleUpdate);
   }, []);
 
   useEffect(() => {
@@ -309,6 +345,18 @@ export default function App() {
                       const tempC = current.temp_C;
                       const tempF = current.temp_F;
                       return { id: call.id, name: call.name, response: { weather: `${weatherDesc}, ${tempC}°C (${tempF}°F)` } };
+                    } else if (call.name === 'scheduleEvent') {
+                      const { title, date, time } = call.args as any;
+                      const newEvent = { id: Date.now().toString(), title, date, time };
+                      globalEvents.push(newEvent);
+                      window.dispatchEvent(new CustomEvent('calendarUpdate'));
+                      addMessage('system', `Executing command: Scheduling event "${title}" on ${date} at ${time}`);
+                      return { id: call.id, name: call.name, response: { result: 'Event scheduled successfully' } };
+                    } else if (call.name === 'getSchedule') {
+                      const { date } = call.args as any;
+                      const eventsToReturn = date ? globalEvents.filter(e => e.date === date) : globalEvents;
+                      addMessage('system', `Executing command: Retrieving schedule${date ? ` for ${date}` : ''}`);
+                      return { id: call.id, name: call.name, response: { events: eventsToReturn } };
                     }
                     return { id: call.id, name: call.name, response: { error: 'Unknown function' } };
                   } catch (e: any) {
@@ -342,8 +390,8 @@ export default function App() {
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
           },
-          systemInstruction: "You are J.A.R.V.I.S., a highly advanced, intelligent, and efficient AI assistant. Keep your responses concise, professional, and helpful. You have access to tools to open websites, check the time, check the date, search Google, play music, and get the weather. Use them when requested.",
-          tools: [{ functionDeclarations: [openWebsiteDeclaration, getTimeDeclaration, getDateDeclaration, searchGoogleDeclaration, playMusicDeclaration, getWeatherDeclaration] }],
+          systemInstruction: "You are J.A.R.V.I.S., a highly advanced, intelligent, and efficient AI assistant. Keep your responses concise, professional, and helpful. You have access to tools to open websites, check the time, check the date, search Google, play music, get the weather, schedule events, and view the schedule. Use them when requested.",
+          tools: [{ functionDeclarations: [openWebsiteDeclaration, getTimeDeclaration, getDateDeclaration, searchGoogleDeclaration, playMusicDeclaration, getWeatherDeclaration, scheduleEventDeclaration, getScheduleDeclaration] }],
           // @ts-ignore
           inputAudioTranscription: {},
           // @ts-ignore
@@ -390,7 +438,7 @@ export default function App() {
         {/* Header */}
         <header className="jarvis-header">
           <div className="system-id">STARK-OS // J.A.R.V.I.S. // v4.0.2</div>
-          <div className="clock">{currentTime}</div>
+          <div className="clock">{currentDate} | {currentTime}</div>
         </header>
 
         {/* Left Panel: Chat Area */}
@@ -436,44 +484,48 @@ export default function App() {
           </div>
         </main>
 
-        {/* Right Panel: System Diagnostics */}
-        <aside className="diag-panel">
-          <div className="diag-item">
-            <div className="diag-meta">
-              <span>CORE TEMPERATURE</span>
-              <span>42&deg;C</span>
+        {/* Right Panel: System Diagnostics & Calendar */}
+        <aside className="diag-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div>
+            <div style={{ color: 'var(--neon-blue)', fontSize: '12px', letterSpacing: '1px', marginBottom: '10px' }}>SYSTEM DIAGNOSTICS</div>
+            <div className="diag-item">
+              <div className="diag-meta">
+                <span>CORE TEMPERATURE</span>
+                <span>42&deg;C</span>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: '42%' }}></div>
+              </div>
             </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: '42%' }}></div>
-            </div>
-          </div>
-          <div className="diag-item">
-            <div className="diag-meta">
-              <span>SYNAPTIC UPLINK</span>
-              <span>{isListening ? 'ACTIVE' : 'STABLE'}</span>
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: isListening ? '100%' : '88%' }}></div>
-            </div>
-          </div>
-          <div className="diag-item">
-            <div className="diag-meta">
-              <span>MEMORY BUFFER</span>
-              <span>12.4 TB/S</span>
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: '65%' }}></div>
+            <div className="diag-item">
+              <div className="diag-meta">
+                <span>SYNAPTIC UPLINK</span>
+                <span>{isListening ? 'ACTIVE' : 'STABLE'}</span>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: isListening ? '100%' : '88%' }}></div>
+              </div>
             </div>
           </div>
-          <div className="diag-item">
-            <div className="diag-meta">
-              <span>QUANTUM DECRYPT</span>
-              <span>IDLE</span>
+
+          <div style={{ flexGrow: 1, overflowY: 'auto' }}>
+            <div style={{ color: 'var(--neon-blue)', fontSize: '12px', letterSpacing: '1px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Calendar className="w-4 h-4" /> CALENDAR
             </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: '12%' }}></div>
-            </div>
+            {events.length === 0 ? (
+              <div style={{ fontSize: '11px', opacity: 0.5 }}>No scheduled events.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {events.map((ev: any) => (
+                  <div key={ev.id} style={{ background: 'var(--glass-bg)', padding: '8px', borderLeft: '2px solid var(--neon-blue)', borderRadius: '0 4px 4px 0' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{ev.title}</div>
+                    <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '4px' }}>{ev.date} at {ev.time}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+
           <div style={{ marginTop: 'auto', fontFamily: 'var(--font-mono)', fontSize: '11px', opacity: 0.5 }}>
             ENC-KEY: 0x88f..a21<br />
             IP: 192.168.1.104<br />
